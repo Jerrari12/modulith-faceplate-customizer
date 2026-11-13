@@ -1,0 +1,390 @@
+// COPIED VERBATIM from modulith-planner main 55a849b, js/filament-db.js (2026-11-05). The planner owns this list:
+// re-copy it rather than edit it here. The customizer reads FILAMENT_DB for its colour slots.
+
+/* =========================================================================
+   FILAMENT CATALOG - the shared filament list
+   =========================================================================
+   Moved out of main.js on 2026-09-05, unchanged. It had been a `const` at
+   line 4052 of a 6,592-line module: not exported, not fetchable, and therefore
+   unreadable by anything but this file - which is what made "read Build
+   Studio's filament list" an extraction rather than a read.
+
+   WHY A MODULE AND NOT JSON. Each brand block ends in a `.map()` that DERIVES
+   `label` and `url` from `name` (`label: \`Panchroma ${f.name}\``), so the
+   catalog is a computation, not a table. Baking it into JSON would freeze 102
+   derived labels and 27 derived links as literals, and the next colour added
+   would have to repeat a pattern by hand instead of inheriting it.
+   ⚠ AND main.js CANNOT READ JSON SYNCHRONOUSLY. `_db()` and `CLASSIC_FACE`
+   run at module-evaluation time, so a `fetch()` would make the catalog async
+   and cascade through the presets. An ES module keeps the derivation, keeps
+   the synchronous read, and is still a file any JS consumer can import.
+
+   THE SHAPE, MEASURED RATHER THAN ASSERTED (re-measured 2026-09-06, 6 brands / 102 colours):
+     brand   { brand, line, url, colors[] }              - all 6 identical
+     colour  { name, label, hex, url } + optional `id`,  - 5 row shapes:
+             `pick`, `pickNote`                            75 with id
+                                                            21 without
+                                                             3 +pick +pickNote
+                                                             2 +id +pick +pickNote
+                                                             1 +pick
+   `label` is UNIQUE across all brands - 102 labels, 0 collisions, 0 undefined -
+   which is load-bearing: it is the identity key `customColors` stores, and the
+   key `_db()` and the picker's active-ring match on.
+
+   ⚠ `customColors` IS KEYED BY PART TYPE, NOT BY FILAMENT. The palette maps
+   `Type` or `Type:zone` (e.g. `Faceplate:GRIP ACCENT`) to `{ name, hex, url }`,
+   where `name` is the filament's `label` above. A palette entry is an OBJECT;
+   a bare hex string is dropped by `cleanPalette`.
+   ========================================================================= */
+
+// ---------- filament colors ----------
+// Multi-brand filament database. Each brand entry: { brand, line, url (shop
+// fallback), colors: [{name, label, hex, url, pick?}] }. `label` must stay
+// UNIQUE across all brands — customColors stores it as the identity key.
+// Adding a brand (Prusa / Polar / Printed Solids / …) = appending one entry
+// here; the menu renders it as its own collapsible section automatically.
+// Polymaker: real Panchroma™ Basic PLA 1.75mm/1kg variants (names + Shopify
+// variant ids pulled from shop.polymaker.com 2026-07-05; hexes approximated —
+// refine against the spool renders anytime). The Elegoo entry is Joey's
+// budget pick (amzn.to IS an affiliate link) — mainly cases & drawer bodies.
+//
+// Polymaker links are Joey's AMBASSADOR tracked links (Superfiliate, 2026-08-07).
+// The `q` value is Superfiliate's OWN feed handle — `pla` / `silk-pla`, NOT the
+// shop's `panchroma-pla` / `panchroma-silk` — and only PORTAL-MINTED values are
+// valid: an unknown q fails SOFT (attribution + the 15% first-purchase code
+// still attach; the shopper just lands on the store root instead of the
+// product). Chain: /JERRARI?q=… → superfiliate session → /discount/JERRARI
+// ?redirect=/products/… — so the code arrives pre-applied at checkout.
+// Colour/variant preselect is NOT supported by these links (verified: the
+// variant syntax gets stripped), which is why the buy button names the exact
+// colour to pick on the page. The per-colour variant ids are KEPT in the data
+// below so plain deep links can be restored the day Superfiliate supports
+// them: `https://shop.polymaker.com/products/panchroma-pla?variant=${id}`.
+const POLY_LINK = q => `https://shop.polymaker.com/JERRARI?q=${q}`;
+const PM = id => POLY_LINK('pla');           // id retained in the colour rows, unused for now
+const PM_SILK = POLY_LINK('silk-pla');
+/* Minted and VERIFIED 2026-09-17 (Joey minted it, then the live link was followed): it resolves to
+   /products/translucent-pla carrying utm_campaign=JERRARI and ref=superfiliate-JERRARI, so attribution
+   attaches. ⚠ Only portal-minted handles route; an unknown one fails soft to the store root. */
+const PM_TRANS = POLY_LINK('translucent-pla');
+/* Joey's minted TPU handles (2026-10-21, sent as https://shop.polymaker.com/JERRARI?q=polyflex-tpu95 and ?q=polyflex-tpu90) */
+const PM_TPU95 = POLY_LINK('polyflex-tpu95');
+const PM_TPU90 = POLY_LINK('polyflex-tpu90');
+/* Joey's minted Galaxy PLA handle (2026-11-04, sent as https://shop.polymaker.com/JERRARI?q=galaxy-pla). Followed that day: it
+   lands on /products/galaxy-pla carrying utm_campaign=JERRARI and ref=superfiliate-JERRARI. */
+const PM_GALAXY = POLY_LINK('galaxy-pla');
+const POLAR = 'https://polarfilament.com/products';   // Polar Filament's product pages (the Polar block, 2026-10-26)
+const POLYMAKER_URL = PM(44863271895097);
+const FILAMENT_DB = [
+  { brand: 'Polymaker', line: 'Panchroma™ PLA', url: POLYMAKER_URL, colors: [
+    { name: 'Black',           hex: '#2b2b2e', id: 44863271731257 },
+    { name: 'Dark Grey',       hex: '#4a4c51', id: 44863271010361 },
+    { name: 'Steel Grey',      hex: '#6e7178', id: 44863271829561 },
+    { name: 'Grey',            hex: '#9a9da3', id: 44863271862329 },
+    { name: 'Cold White',      hex: '#eef1f4', id: 44863271043129 },
+    { name: 'White',           hex: '#f5f4ee', id: 44863271895097 },
+    { name: 'Cream',           hex: '#f1e7cf', id: 44863271239737 },
+    { name: 'Beige',           hex: '#ddc9a3', id: 44863271436345 },
+    { name: 'Tan',             hex: '#c8a97e', id: 44863271108665 },
+    { name: 'Brown',           hex: '#7a5236', id: 44863271338041 },
+    { name: 'Red',             hex: '#d23a2e', id: 44863271796793 },
+    { name: 'Wine Red',        hex: '#7e2432', id: 44863271534649 },
+    { name: 'Magenta',         hex: '#d4308f', id: 44863271174201 },
+    { name: 'Pink',            hex: '#f0a4c0', id: 44863271632953 },
+    { name: 'Orange',          hex: '#ff8a40', id: 44863271665721 },
+    { name: 'Yellow',          hex: '#f5c542', id: 44863271567417 },
+    { name: 'Lemon Yellow',    hex: '#f8e35a', id: 44863271305273 },
+    { name: 'Lime Green',      hex: '#9ccb3b', id: 44863271206969 },
+    { name: 'Green',           hex: '#3f9b4f', id: 44863271698489 },
+    { name: 'Jungle Green',    hex: '#1f6e46', id: 44863271501881 },
+    { name: 'Olive Green',     hex: '#708238', id: 44863271469113 },
+    { name: 'Dark Olive Drab', hex: '#4e5136', id: 44863271075897 },
+    { name: 'Polymaker Teal',  hex: '#00a5a5', id: 44863271272505 },
+    { name: 'Aqua Blue',       hex: '#5cc6e0', id: 44863271403577 },
+    { name: 'Azure Blue',      hex: '#2e8fdc', id: 44863271141433 },
+    { name: 'Blue',            hex: '#2f6fbe', id: 44863271764025 },
+    { name: 'Stone Blue',      hex: '#4a6a8a', id: 44863271370809 },
+    { name: 'Purple',          hex: '#7a4fb0', id: 44863271600185 },
+  ].map(f => ({ ...f, label: `Panchroma ${f.name}`, url: PM(f.id) })) },
+  // Silk is a separate Panchroma product page (shop handle silk-pla), so it
+  // gets its own section rather than a stray url inside the Basic PLA block.
+  // All 24 new-formula 1.75mm/1kg colours (variant ids scraped from the shop's
+  // product JSON 2026-08-07, shop's own order; ids KEPT like the PLA section's
+  // — unused until Superfiliate supports variant deep links; hexes are
+  // approximated silk sheens, refine against spool renders anytime).
+  // Availability is deliberately NOT tracked — spool stock shifts weekly
+  // (Silver ships as a refill right now) and the product page is the truth.
+  // Silver is the Classic faceplate GRIP ACCENT default (Joey 2026-07-25) —
+  // its label 'Panchroma Silk Silver' is load-bearing: PRESETS' CLASSIC_FACE
+  // block and saved user palettes match on it exactly.
+  { brand: 'Polymaker', line: 'Panchroma™ Silk PLA', url: PM_SILK, colors: [
+    { name: 'Silk Black',         hex: '#3a3b40', id: 43637560868921 },
+    { name: 'Silk Purple',        hex: '#8655c8', id: 43637560901689 },
+    { name: 'Silk Magenta',       hex: '#d63d9a', id: 43637560934457 },
+    { name: 'Silk Rose',          hex: '#e87c9c', id: 43637560967225 },
+    { name: 'Silk Red',           hex: '#d43a3a', id: 43637560999993 },
+    { name: 'Silk Rose Gold',     hex: '#e0a48c', id: 43637561032761 },
+    { name: 'Silk Quartz Pink',   hex: '#f2c4cf', id: 43637561065529 },
+    { name: 'Silk Bronze',        hex: '#b0703a', id: 43637561098297 },
+    { name: 'Silk Orange',        hex: '#f28034', id: 43637561131065 },
+    { name: 'Silk White',         hex: '#f4f3ee', id: 43637561163833 },
+    { name: 'Silk Gold',          hex: '#d9b13b', id: 43637561196601 },
+    { name: 'Silk Yellow',        hex: '#f2d03c', id: 43637561229369 },
+    { name: 'Silk Lime',          hex: '#aad438', id: 43637561262137 },
+    { name: 'Silk Green',         hex: '#3da954', id: 43637561294905 },
+    { name: 'Silk Teal',          hex: '#2aa8a0', id: 43637561327673 },
+    { name: 'Silk Light Blue',    hex: '#7ec3ea', id: 43637561360441 },
+    { name: 'Silk Blue',          hex: '#3672c8', id: 43637561393209 },
+    { name: 'Silk Chrome',        hex: '#c8ccd2', id: 43637561425977 },
+    { name: 'Silk Silver',        hex: '#cdd2d9', id: 43637561458745, pick: true,
+      pickNote: ' · Joey’s silver for grip-accent rods' },
+    { name: 'Silk Brass',         hex: '#c9a545', id: 43637561491513 },
+    { name: 'Silk Peridot Green', hex: '#9fb43a', id: 43637561524281 },
+    { name: 'Silk Periwinkle',    hex: '#8a96dc', id: 43637561557049 },
+    { name: 'Silk Dark Blue',     hex: '#2b4a8c', id: 43637561589817 },
+    { name: 'Silk Gunmetal Grey', hex: '#6a6f78', id: 43637561622585 },
+  /* ⚠ `finish: 'silk'` IS THE PRODUCT FAMILY THE SHOP PUBLISHES (its own Silk PLA page), not a measurement - the same
+     kind of field as the Translucent line's `translucent`. part-material.js reads it to give these filaments the
+     AUTHORED silk approximation (2026-10-28); a filament's name is never what decides it. */
+  ].map(f => ({ ...f, finish: 'silk', label: `Panchroma ${f.name}`, url: PM_SILK })) },
+  // Polymaker PETG — feed handle petg, all 25 real 1.75mm/1kg variants
+  // (variant ids scraped from the shop's product JSON 2026-08-07, shop order,
+  // Galaxy/Clear/Army Brown included; hexes approximated like every section).
+  // ★ PETG Black is Joey's recommended PETG — the premium lane beside the
+  // Elegoo budget pick below; both stars are honest, different budgets.
+  { brand: 'Polymaker', line: 'PETG', url: POLY_LINK('petg'), colors: [
+    { name: 'PETG Black',            hex: '#26272b', id: 45079221108793, pick: true,
+      pickNote: ' · Joey’s recommended PETG for cases & drawer bodies' },
+    { name: 'PETG White',            hex: '#f2f2ee', id: 45079221141561 },
+    { name: 'PETG Grey',             hex: '#9a9da3', id: 45079221174329 },
+    { name: 'PETG Red',              hex: '#cf3430', id: 45079221207097 },
+    { name: 'PETG Orange',           hex: '#f07a26', id: 45079221239865 },
+    { name: 'PETG Blue',             hex: '#2f66b8', id: 45079221272633 },
+    { name: 'PETG Yellow',           hex: '#f2c73b', id: 45079221305401 },
+    { name: 'PETG Dark Grey',        hex: '#4d4f54', id: 45079221338169 },
+    { name: 'PETG Teal',             hex: '#159a9c', id: 45079221370937 },
+    { name: 'PETG Silver',           hex: '#b9bec6', id: 45079221403705 },
+    { name: 'PETG Green',            hex: '#2f9e53', id: 45079221436473 },
+    { name: 'PETG Electric Blue',    hex: '#1d7fe0', id: 45079221469241 },
+    { name: 'PETG Purple',           hex: '#7b4fb5', id: 45079221502009 },
+    { name: 'PETG Dark Blue',        hex: '#23407f', id: 45079221534777 },
+    { name: 'PETG Lime',             hex: '#a6cf3a', id: 45079221567545 },
+    { name: 'PETG Dark Green',       hex: '#1e6b46', id: 45079221600313 },
+    { name: 'PETG Magenta',          hex: '#d23590', id: 45079221633081 },
+    { name: 'PETG Pink',             hex: '#ef9cc0', id: 45079221665849 },
+    { name: 'PETG Dark Purple',      hex: '#462a6b', id: 45079221698617 },
+    { name: 'PETG Army Brown',       hex: '#6f5b3e', id: 45588258095161 },
+    { name: 'PETG Clear',            hex: '#e8ecef', id: 46279866023993 },
+    { name: 'PETG Galaxy Black',     hex: '#23252e', id: 45588258553913, finish: 'glitter' },
+    { name: 'PETG Galaxy Dark Grey', hex: '#4a4e59', id: 45588259078201, finish: 'glitter' },
+    { name: 'PETG Galaxy Blue',      hex: '#2b4a8c', id: 45588259176505, finish: 'glitter' },
+    { name: 'PETG Galaxy Red',       hex: '#8c2430', id: 45588259504185, finish: 'glitter' },
+  ].map(f => ({ ...f, label: `Polymaker ${f.name}`, url: POLY_LINK('petg') })) },
+  /* Polymaker Panchroma™ Translucent PLA — the EXTRA-TRANSPARENT family only (Joey 2026-09-17).
+     ⚠ HEXES HERE ARE THE SHOP'S OWN PUBLISHED SWATCH VALUES, not approximations like every section
+     above: the product page carries each colour as `--custom-swatch-hex` on its swatch and shows it
+     on hover (read from the live page 2026-09-17). Variant ids from the same page's product JSON.
+     ⚠ THE SEMI-TRANSPARENT FOUR ARE DELIBERATELY ABSENT — Translucent Cyan #08ABFB (43595097800761),
+     Magenta #D93B90 (43595097833529), Yellow #F9ED3D (43595097866297) and Grey #9199A4 (43595097899065),
+     plus Natural in that family (46478202765369). Joey owns only the extra-transparent spools and the
+     semi-transparent transmission distance is unmeasured, so nothing here would be able to say how they
+     print translucent. Add them when a TD measurement exists, not before.
+     ★ Translucent Natural is the filament the see-into frosted back cover was profiled from (the lab's
+     round 39), which is why it carries the note rather than a recommendation. */
+  { brand: 'Polymaker', line: 'Panchroma™ Translucent PLA', url: PM_TRANS, colors: [
+    { name: 'Translucent Natural',      hex: '#E1E7E5', id: 46315863212089, pick: true,
+      pickNote: ' · the translucent filament the frosted back cover was profiled from' },
+    { name: 'Translucent Red',          hex: '#990002', id: 46315863244857 },
+    { name: 'Translucent Green',        hex: '#008729', id: 46315863277625 },
+    { name: 'Translucent Light Green',  hex: '#7FEBE2', id: 46315863310393 },
+    { name: 'Translucent Light Blue',   hex: '#46BAE0', id: 46315863343161 },
+    { name: 'Translucent Light Purple', hex: '#A7A8D9', id: 46315863375929 },
+    { name: 'Translucent Light Pink',   hex: '#EEBCC8', id: 46315863408697 },
+    { name: 'Translucent Brown',        hex: '#C08559', id: 46315863441465 },
+    { name: 'Translucent Jade',         hex: '#AAF2D6', id: 46315863474233 },
+  /* ⚠ `translucent` IS THE PRODUCT FAMILY THE SHOP PUBLISHES, not a measurement: 'extra' = Extra-Transparent.
+     The viewer reads it to decide which filaments a SUPPORTED component previews as translucent (main.js
+     SEE_INTO_COMPONENTS). A transmission distance is a Lab measurement and does not live here. */
+  ].map(f => ({ ...f, translucent: 'extra', label: `Panchroma ${f.name}`, url: PM_TRANS })) },
+  /* Polymaker Panchroma™ Galaxy PLA (Joey, 2026-11-04: "they do have the hex color for all the galaxy glitter filaments from
+     polymaker if we can add those too"). ⚠ HEXES AND IDS ARE THE SHOP'S OWN: the product page prints a "HEX Code" for each
+     colour, read 2026-11-04 one variant at a time, and the ids are the same variants (TD 0.1 Black, 0.2 Dark Red, 0.4 the
+     others, none for the Hedgehog). Hedgehog Makes' Galaxy Red, the collaboration Joey asked about on 2026-11-01, is a colour
+     of this same product, so his handle below covers it too. They glitter like the other Galaxy rows (glitter.js). */
+  { brand: 'Polymaker', line: 'Panchroma™ Galaxy PLA', url: PM_GALAXY, colors: [
+    { name: 'Galaxy Black',              hex: '#161617', id: 43595081711673 },
+    { name: 'Galaxy Dark Blue',          hex: '#18192D', id: 43595081744441 },
+    { name: 'Galaxy Dark Red',           hex: '#451E14', id: 43595081777209 },
+    { name: 'Galaxy Dark Green',         hex: '#13484D', id: 43595081809977 },
+    { name: 'Galaxy Dark Grey',          hex: '#4E5658', id: 43595081842745 },
+    { name: 'Hedgehog Makes - Galaxy Red', hex: '#760007', id: 44933539987513 },
+  ].map(f => ({ ...f, finish: 'glitter', label: `Panchroma ${f.name}`, url: PM_GALAXY })) },
+  /* Polymaker PolyFlex™ TPU — THE FEET'S FILAMENT (Joey, 2026-10-21: "when selecting the feet, i feel like we should only
+     list TPU filaments as an option ... default for feet should always be TPU black"; "you can use any TPU, so polymakers
+     TPU lineup would be fine to add"). The printed foot is the flexible part (parts catalogue: "Printed in TPU, or bought as
+     adhesive rubber feet"); the planner lists these for the feet and nowhere else, and TPU95 Black is the feet's default.
+     ⚠ HEXES ARE THE SHOP'S OWN PUBLISHED SWATCH VALUES (`--custom-swatch-hex` on each product page, read 2026-10-21 in the
+     pages' colour order), and ids are the 1.75 mm variants from the same pages' product JSON.
+     ⚠ TPU90 CLEAR IS DELIBERATELY ABSENT, for the Translucent PLA reason above: nothing here can say how it prints
+     translucent. PolyFlex™ TPU95-HF (Black, White, Clear, Translucent Red) waits for a minted handle. */
+  { brand: 'Polymaker', line: 'PolyFlex™ TPU95', url: PM_TPU95, colors: [
+    { name: 'PolyFlex TPU95 Black',  hex: '#16161A', id: 39574341681209, pick: true, pickNote: ' · the default for printed feet' },
+    { name: 'PolyFlex TPU95 White',  hex: '#F0EBE8', id: 39574341648441 },
+    { name: 'PolyFlex TPU95 Blue',   hex: '#338CC7', id: 39574341484601 },
+    { name: 'PolyFlex TPU95 Red',    hex: '#F3442B', id: 39574341615673 },
+    { name: 'PolyFlex TPU95 Yellow', hex: '#EDA900', id: 39574341550137 },
+    { name: 'PolyFlex TPU95 Orange', hex: '#F57517', id: 39574341386297 },
+  ].map(f => ({ ...f, label: `Polymaker ${f.name}`, url: PM_TPU95 })) },
+  { brand: 'Polymaker', line: 'PolyFlex™ TPU90', url: PM_TPU90, colors: [
+    { name: 'PolyFlex TPU90 Black',          hex: '#16161A', id: 39574341320761 },
+    { name: 'PolyFlex TPU90 White',          hex: '#F0EBE8', id: 39574341287993 },
+    { name: 'PolyFlex TPU90 Grey',           hex: '#80837C', id: 39574341255225 },
+    { name: 'PolyFlex TPU90 Polymaker Teal', hex: '#01ACBA', id: 39574341189689 },
+  ].map(f => ({ ...f, label: `Polymaker ${f.name}`, url: PM_TPU90 })) },
+  { brand: 'Elegoo', line: 'PLA / PETG', url: 'https://amzn.to/3QWCdV6', colors: [
+    { name: 'PETG Black', label: 'Elegoo PETG Black', hex: '#232427', url: 'https://amzn.to/3QWCdV6', pick: true },
+    // PLA Black is the Classic faceplate BODY default (Joey 2026-07-25)
+    { name: 'PLA Black', label: 'Elegoo PLA Black', hex: '#1c1d20', url: 'https://amzn.to/4fqvv1O', pick: true,
+      pickNote: ' · Joey’s black for faceplate bodies & shells' },
+    // ⚠ THE FIRST HEX IN THIS FILE MEASURED FROM A PRINTED PART, not sourced from a swatch site.
+    // Derived 2026-09-06 from FL-REF-1 printed in this filament, capture session
+    // 20260906-1122-mystery-orange-and-elegoo-grey: linear reflectance off the flat wall, anchored
+    // on a white card, sRGB OETF only (no tone map — these hexes are flat swatches, and a
+    // tone-mapped value would be double-curved when a renderer decodes it back to linear).
+    //
+    // ⚠ AND NOT FROM THE FRAME THAT LOOKS LIKE THE OBVIOUS ONE. At lamp lateral 0 the horizontal
+    // layer lines fire their specular straight into the lens — 9-33 % of that frame's flat-wall
+    // signal is specular, and its median is not even decode-stable (G/R moves 16 % between AHD and
+    // a Bayer-quad average, because at 6.3 px the stripe sits near the R/B sublattice Nyquist).
+    // This value is the specular-free chromaticity from the two OFF-AXIS frames, scaled to the
+    // lateral-0 diffuse geometry.
+    //
+    // ⚠ THE BIQU TD-1's OWN HEX FOR THIS SPOOL, #5474D1, IS REJECTED: it is blue and the part is
+    // grey. A TD meter measures transmission through a strand; its colour channel is not a surface
+    // reflectance, and on a low-saturation filament it has nothing to lock onto.
+    //
+    // What is solid: hue 153.7 deg and chroma C* 2.82 — very close to neutral, leaning green —
+    // because a scalar exposure cancels in the channel ratios. What is NOT: absolute lightness. The
+    // white card is uncalibrated, so +/-15 % moves L* by 7.4 units and this hex to #7D827E..#909591.
+    { name: 'PLA Grey', label: 'Elegoo PLA Grey', hex: '#878C88', url: 'https://amzn.to/3QWCdV6' },
+  ] },
+  // Printed Solid (Jessie) PLA — real solid Basic/Premium colors with printedsolid.com
+  // product links (hexes = the flat swatches from 3dfilamentprofiles.com/filaments/printed-solid;
+  // Pure Magenta/Natural read pale — kept as-sourced). Mystery Orange is Joey's Handle orange.
+  { brand: 'Printed Solid', line: 'PLA', url: 'https://www.printedsolid.com/collections/1-75mm-jessie', colors: [
+    { name: 'Mystery Orange',   hex: '#F56233', url: 'https://www.printedsolid.com/products/jessie-pla-1-75mm-x-1kg-mystery-orange', pick: true, pickNote: ' · Joey’s orange for the Handles' },
+    { name: 'Blue Whale Grey',  hex: '#35608E', url: 'https://www.printedsolid.com/collections/filament/products/jessie-pla-1-75mm-x-1kg-blue-whale-grey' },
+    { name: 'Purple Ice',       hex: '#C965EA', url: 'https://www.printedsolid.com/products/jessie-pla-1-75mm-x-1kg-purple-ice' },
+    { name: 'Red Ice',          hex: '#862E26', url: 'https://www.printedsolid.com/collections/jessie/products/jessie-pla-1-75mm-x-1kg-red-ice' },
+    { name: 'White',            hex: '#EFEFEA', url: 'https://www.printedsolid.com/collections/jessie/products/jessie-pla-1-75mm-x-1kg-white' },
+    { name: 'Black',            hex: '#2A242D', url: 'https://www.printedsolid.com/products/jessie-pla-1-75mm-x-1kg-black' },
+    { name: 'Natural',          hex: '#FFFFCC', url: 'https://www.printedsolid.com/products/jessie-pla-1-75mm-x-1kg-natural' },
+    { name: 'PS Red',           hex: '#EC2F26', url: 'https://www.printedsolid.com/products/jessie-pla-1-75mm-x-1kg-ps-red' },
+    { name: 'Safety Orange',    hex: '#F04000', url: 'https://www.printedsolid.com/products/jessie-pla-1-75mm-x-1kg-safety-orange' },
+    { name: 'Yellow Bird',      hex: '#FDC230', url: 'https://www.printedsolid.com/products/jessie-pla-1-75mm-x-1kg-yellow-bird' },
+    { name: 'Neon Green',       hex: '#B1DA00', url: 'https://www.printedsolid.com/products/jessie-pla-1-75mm-x-1kg-neon-green' },
+    // Joey asked for it 2026-10-18 ("Can we add Jessie neon yellow"). The hex is the median of the centre third of the
+    // maker's own swatch photo (a printed sample, white interlayer highlights excluded by the median); the page gives no
+    // colour code and says the colour is "more saturated than a screen can show"
+    { name: 'Neon Yellow',      hex: '#E4E202', url: 'https://www.printedsolid.com/products/jessie-pla-1-75mm-x-1kg-neon-yellow' },
+    { name: 'Bold Blue',        hex: '#0251A7', url: 'https://www.printedsolid.com/products/jessie-pla-1-75mm-x-1kg-bold-blue' },
+    { name: 'Blue Ice',         hex: '#201E8A', url: 'https://www.printedsolid.com/products/jessie-pla-1-75mm-x-1kg-blue-ice' },
+    { name: 'Blue Moon',        hex: '#022679', url: 'https://www.printedsolid.com/products/jessie-pla-1-75mm-x-1kg-blue-moon' },
+    { name: 'Deep Purple',      hex: '#2E073E', url: 'https://www.printedsolid.com/products/jessie-pla-1-75mm-x-1kg-deep-purple' },
+    { name: 'Purple Eater',     hex: '#8E4FB0', url: 'https://www.printedsolid.com/products/jessie-pla-1-75mm-x-1kg-purple-eater' },
+    { name: 'Pure Magenta',     hex: '#FFE0F8', url: 'https://www.printedsolid.com/products/jessie-pla-1-75mm-x-1kg-pure-magenta' },
+    { name: 'Elixir Aquamarine',hex: '#2E8FFF', url: 'https://www.printedsolid.com/products/jessie-premium-elixir-1-75mm-x-aquamarine-1kg' },
+    { name: 'Elixir Gold Rush', hex: '#F0C838', url: 'https://www.printedsolid.com/products/jessie-premium-elixir-1-75mm-x-gold-rush-1kg' },
+    { name: 'Elixir Nightshade',hex: '#501282', url: 'https://www.printedsolid.com/products/jessie-premium-elixir-1-75mm-x-nightshade-1kg' },
+    { name: 'Elixir Royal Ruby',hex: '#A91E16', url: 'https://www.printedsolid.com/products/jessie-premium-elixir-1-75mm-x-royal-ruby-1kg' },
+  ].map(f => ({ ...f, label: `Printed Solid ${f.name}` })) },
+  // ERYONE Burnt Titanium — the REAL "holo blue" Joey prints Accent panels in
+  // (the presets' _navy placeholder until 2026-08-07). One colour-shift blue,
+  // Amazon listing → isPaidLink marks it automatically like every amzn link.
+  { brand: 'ERYONE', line: 'Burnt Titanium PLA', url: 'https://amzn.to/4fTKtO9', colors: [
+    { name: 'Burnt Titanium', label: 'ERYONE Burnt Titanium', hex: '#31517e', url: 'https://amzn.to/4fTKtO9', pick: true,
+      pickNote: ' · Joey’s colour-shift blue for Accent panels' },
+  ] },
+  // Polar Filament PLA (Troy, Michigan - Joey's local filament maker; Joey asked 2026-10-26). Every colour Polar SELLS as a
+  // 1 kg 1.75 mm PLA spool that has a colour code, linked to its own product page; 44 colours, joined by Polar's SKU
+  // (in the comment on each row) across their colour list and their shop. The hex comes from the truest source there is:
+  // a spectrophotometer read of a printed swatch where filamentcolors.xyz has one (CC BY 4.0; two under their older
+  // names - Chestnut was Rust, Squid was Teal, as the product addresses still say), else Polar's own published colour,
+  // which is the colour they aim for and can sit well off the plastic (the 10 measured ones differ by a median dE76 of
+  // 27; Spaceship Steel is published #D1D1D1 and measures #787E82). All opaque PLA: no TD is needed here (it is read
+  // only for translucent filaments, and lives in the Lab).
+  // ⚠ LEFT OUT: Arctic White (P811) and Robotic White (P804), on sale but with no colour code yet; the Mystery Spool;
+  // the 25 colours on the colour list that the shop no longer sells (Polar White, Silver Silk, Matte Coral, the
+  // marbles...), which have no product page to link. A measured hex for any colour replaces its published one.
+  { brand: 'Polar Filament', line: 'PLA', url: 'https://polarfilament.com/collections/pla-1-75mm', colors: [
+    // MEASURED - a spectrophotometer read of a printed swatch (filamentcolors.xyz, CC BY 4.0), the truest colour there is
+    { name: 'Classic Black',     hex: '#242425', url: `${POLAR}/1-75mm-pla-1kg` },   // P001
+    { name: 'Candy Red',         hex: '#BB3638', url: `${POLAR}/polar-filament-red-1-75mm-pla-1kg` },   // P003
+    { name: 'Vivid Orange',      hex: '#DE5635', url: `${POLAR}/orange-pla-1kg-1-75mm` },   // P004
+    { name: 'Sunshine Yellow',   hex: '#DFBF1E', url: `${POLAR}/yellow-pla-1kg-1-75mm` },   // P007
+    { name: 'Alien Green',       hex: '#399739', url: `${POLAR}/copy-of-lime-green-pla-1kg-1-75mm` },   // P008
+    { name: 'Merlot',            hex: '#60404B', url: `${POLAR}/purple-pla-1kg-1-75mm` },   // P009
+    { name: 'Chestnut',          hex: '#693533', url: `${POLAR}/rust-pla` },   // P011
+    { name: 'Squid',             hex: '#029A7F', url: `${POLAR}/teal-pla-1kg-1-75mm` },   // P012
+    { name: 'Royal Blue',        hex: '#1374AE', url: `${POLAR}/blue-pla-1kg-1-75mm` },   // P016
+    { name: 'Spaceship Steel',   hex: '#787E82', url: `${POLAR}/silver-pla-1kg-1-75mm` },   // P020
+    { name: 'Marine Blue',       hex: '#0B64A0', url: `${POLAR}/marine-blue-shiny-1kg-1-75mm` },   // P057
+    // PUBLISHED - Polar's own colour list (pfil.us/colors.php): the colour they aim for, not a measurement
+    { name: 'Shamrock',          hex: '#098647', url: `${POLAR}/green-pla-1kg-1-75mm` },   // P005
+    { name: 'Mocha',             hex: '#6B5029', url: `${POLAR}/brown-pla-1kg-1-75mm` },   // P006
+    { name: 'Deep Space',        hex: '#1F4059', url: `${POLAR}/dark-blue-pla-1kg-1-75mm` },   // P010
+    { name: 'Light Blue',        hex: '#14ADDB', url: `${POLAR}/polar-filament-blue-1-75mm-pla-1kg` },   // P023
+    { name: 'Pink',              hex: '#FCBECC', url: `${POLAR}/pink-pla-1kg-1-75mm` },   // P024
+    { name: 'Cornflower Blue',   hex: '#949BFF', url: `${POLAR}/cornflower-blue-pla-1kg-1-75mm` },   // P025
+    { name: 'Dijon Yellow',      hex: '#EDCE02', url: `${POLAR}/gold-pla-1kg-1-75mm` },   // P028
+    { name: 'Magenta',           hex: '#FF0086', url: `${POLAR}/magenta-pla-1kg-1-75mm` },   // P029
+    { name: 'Banana Split',      hex: '#DAFF00', url: `${POLAR}/banana-split-pla-1kg-1-75mm` },   // P030
+    { name: 'Sapphire',          hex: '#002CFF', url: `${POLAR}/azure-blue-pla-1kg-1-75mm` },   // P031
+    { name: 'Blaze Orange',      hex: '#FF8800', url: `${POLAR}/blaze-orange-pla-1kg-1-75mm` },   // P032
+    { name: 'Rocket Red',        hex: '#FF1900', url: `${POLAR}/rocket-red-pla-1kg-1-75mm` },   // P033
+    { name: 'Regulation Gray',   hex: '#747474', url: `${POLAR}/regulation-gray-pla-1-75mm` },   // P034
+    { name: 'Lemon Drop',        hex: '#EDFF80', url: `${POLAR}/maize-pla-1kg-1-75mm` },   // P035
+    { name: 'Creamsicle',        hex: '#FF8A50', url: `${POLAR}/creamsicle-pla-1kg-1-75mm` },   // P037
+    { name: 'Coral',             hex: '#FF5D5D', url: `${POLAR}/coral-pla-1kg-1-75mm` },   // P038
+    { name: 'Natural',           hex: '#FFFCF0', url: `${POLAR}/natural-pla-1kg-1-75mm` },   // P049
+    { name: 'Bubblegum',         hex: '#FA34C5', url: `${POLAR}/bubblegum-pla-1kg-1-75mm` },   // P058
+    { name: 'Bloopiter',         hex: '#6E3F8D', url: `${POLAR}/bloopiter-shiny-1kg-1-75mm` },   // P063
+    { name: 'Purplex',           hex: '#8500CC', url: `${POLAR}/purplex-pla-1kg-1-75mm` },   // P066
+    { name: 'Seafoam',           hex: '#00A37A', url: `${POLAR}/seafoam-pla-1kg-1-75mm-copy` },   // P093
+    { name: 'Nuclear Green',     hex: '#00D165', url: `${POLAR}/nuclear-green-pla-1kg-1-75mm` },   // P114
+    { name: 'Lavender',          hex: '#D696EE', url: `${POLAR}/lavender-pla-1kg-1-75mm` },   // P548
+    { name: 'Retro Platinum',    hex: '#ECE7DA', url: `${POLAR}/retro-platinum-pla-1kg-1-75mm` },   // P605
+    { name: 'Desert Tan',        hex: '#E5CC94', url: `${POLAR}/desert-tan-pla-1kg-1-75mm` },   // P606
+    { name: 'Army Green',        hex: '#6E8C5A', url: `${POLAR}/army-green-pla-1kg-1-75mm` },   // P607
+    { name: 'Power Gray 500',    hex: '#605F5C', url: `${POLAR}/power-gray-500-pla-1kg-1-75mm` },   // P630
+    { name: 'Blurple',           hex: '#6F5CFF', url: `${POLAR}/blurple-pla-1kg-1-75mm` },   // P691
+    { name: 'Mint',              hex: '#62F9B8', url: `${POLAR}/mint-pla-1kg-1-75mm` },   // P709
+    { name: 'Nebula',            hex: '#7123E7', url: `${POLAR}/neblua-pla-1kg-1-75mm` },   // P741
+    { name: 'Superior Blue',     hex: '#07489C', url: `${POLAR}/superior-blue-pla-1kg-1-75mm` },   // P772
+    { name: 'Power Gray 100',    hex: '#ADA49F', url: `${POLAR}/coming-soon-power-gray-100` },   // P780
+    { name: 'Michigan Dew',      hex: '#EAFF80', url: `${POLAR}/new-michigan-dew-pla-1kg-1-75mm` },   // P786
+  ].map(f => ({ ...f, label: `Polar ${f.name}` })) },
+  // Prusament Galaxy PLA (Joey, 2026-11-01: "the Prusament can" go live; plain store links with no tracking on them). The 1 kg
+  // spools' own product pages, read in stock 2026-11-01. ⚠ `finish: 'glitter'` IS THE FAMILY THE SHOP TAGS (Glitter on each page), not a
+  // measurement; part-material.js reads it, glitter.js draws it. ⚠ WHERE EACH HEX COMES FROM, BECAUSE THEY DIFFER:
+  // - Black, Silver, Green: Prusa's chart (help.prusa3d.com, HueForge TD and hex codes) and FilamentColors.xyz, digit for digit.
+  // - Purple: FilamentColors' 453A72. Prusa's chart says 0F0939, nearly black in the planner's room. Prusa's own swatch photos settle
+  //   it as a purple: the median of their centre third reads #4B2E7E (1 kg) and #44257A (2 kg). A print would settle the digits.
+  // - Red: NO chart row and no FilamentColors swatch, so the median of the centre third of Prusa's own swatch photo, as Jessie Neon
+  //   Yellow's above. Those photos run dark on the three colours where the chart and FilamentColors agree (Black 2D2D2D, Silver 85898B, Green 162F18), so
+  //   this may be too; a measured hex replaces it. Polymaker's Hedgehog Makes - Galaxy Red (#760007, PA02106) is in the Panchroma Galaxy PLA block.
+  { brand: 'Prusament', line: 'Galaxy PLA', url: 'https://www.prusa3d.com/category/prusament-pla/', colors: [
+    { name: 'Galaxy Black',  hex: '#3D3E3C', url: 'https://www.prusa3d.com/product/prusament-pla-prusa-galaxy-black-1kg-nfc/' },
+    { name: 'Galaxy Silver', hex: '#999A9F', url: 'https://www.prusa3d.com/product/prusament-pla-galaxy-silver-1kg-nfc/' },
+    { name: 'Galaxy Purple', hex: '#453A72', url: 'https://www.prusa3d.com/product/prusament-pla-galaxy-purple-1kg-nfc/' },
+    { name: 'Galaxy Green',  hex: '#426639', url: 'https://www.prusa3d.com/product/prusament-pla-galaxy-green-1kg-nfc/' },
+    { name: 'Galaxy Red',    hex: '#9D1817', url: 'https://www.prusa3d.com/product/prusament-pla-galaxy-red-1kg-nfc/' },
+  ].map(f => ({ ...f, finish: 'glitter', label: `Prusament ${f.name}` })) },
+];
+
+/* The surface family a label's filament belongs to ('silk', 'glitter'), or null for an ordinary one and for a label the catalog
+   does not hold (a saved palette can name a filament that has since left it). */
+const FINISH_OF = new Map(FILAMENT_DB.flatMap(b => b.colors.filter(c => c.finish).map(c => [c.label, c.finish])));
+const finishOfLabel = (label) => FINISH_OF.get(label) || null;
+
+export { FILAMENT_DB, finishOfLabel };

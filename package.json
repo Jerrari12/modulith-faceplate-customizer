@@ -1,0 +1,11 @@
+{
+  "name": "modulith-faceplate-customizer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MODULITH Decor Faceplate Customizer: a static, build-free browser tool for designing custom Essential-backer faceplates.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "serve": "python serve.py"
+  }
+}

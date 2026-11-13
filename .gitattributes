@@ -1,0 +1,7 @@
+# never let line-ending conversion touch binary assets
+*.bin binary
+*.stl binary
+*.3mf binary
+*.ttf binary
+*.woff2 binary
+*.png binary

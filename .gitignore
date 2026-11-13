@@ -1,0 +1,8 @@
+# local only
+.claude/
+node_modules/
+test/out/
+*.bak
+*.log
+Thumbs.db
+.DS_Store

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 36">
+  <!-- Neutral import test file: two fills become two colour layers. Strokes are ignored on import. -->
+  <rect x="2" y="2" width="56" height="32" rx="6" fill="#2d6a9f"/>
+  <path d="M14 18h22l-6-7h7l10 7-10 7h-7l6-7H14z" fill="#f4f1ea"/>
+</svg>

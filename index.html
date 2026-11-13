@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en" data-mode="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MODULITH Faceplate Customizer</title>
+<meta name="description" content="Design your own MODULITH decor faceplates: patterns, shapes, text, pictures, grips, SVG art and sculpted meshes on the Essential backer, checked for printability and exported ready to slice for all 18 sizes.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='7' width='28' height='18' rx='3' fill='%232c2d31'/%3E%3Cpath d='M6 12h20M6 16h20M6 20h20' stroke='%23ff6a1a' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/app.css">
+<script>
+  // paint in the saved mode before the first frame (the planner's rule: dark unless light was chosen)
+  try { if ((JSON.parse(localStorage.getItem('fpc:prefs') || '{}') || {}).mode === 'light') document.documentElement.dataset.mode = 'light'; } catch (e) {}
+</script>
+</head>
+<body>
+<div id="stage">
+  <div id="stage2d"></div>
+  <div id="stage3d" hidden></div>
+</div>
+
+<div id="ws">
+  <!-- top bar: wordmark, the design switcher, the three workspaces, how it prints, light/dark -->
+  <header id="ws-top">
+    <a id="ws-logo" href="https://modulith.systems" title="MODULITH"><img src="img/modulith-logo.svg" alt="MODULITH"></a>
+    <span id="ws-product">Faceplate Customizer <span class="badge">BETA</span></span>
+    <div id="ws-switch">
+      <button class="chip chip-btn strong" id="designBtn" type="button" aria-haspopup="menu" aria-expanded="false" title="This design: rename, open, save, start a new one">
+        <svg class="ph" width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use href="icons/phosphor.svg#ph-folder-simple"/></svg>
+        <span id="designBtnLabel">Untitled faceplate</span>
+        <svg class="ph" width="14" height="14" viewBox="0 0 256 256" aria-hidden="true"><use href="icons/phosphor.svg#ph-caret-down"/></svg>
+      </button>
+      <div class="menu glass" id="designMenu" role="menu" hidden>
+        <div class="label">This design</div>
+        <div class="renamerow"><input class="field" id="designName" type="text" maxlength="120" aria-label="Design name"></div>
+        <div class="note">Saved in this browser as you work. Starting or opening another design keeps this one in the list below. A design file takes it to another computer or another person.</div>
+        <button class="item" type="button" id="btnSaveFile"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-download-simple"/></svg>Save design file<span class="meta">.json</span></button>
+        <label class="item" for="fileDesign"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-upload-simple"/></svg>Open design file<input id="fileDesign" type="file" accept=".json,application/json" hidden></label>
+        <button class="item" type="button" id="btnNew"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-plus"/></svg>New design</button>
+        <button class="item" type="button" id="btnHistory"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-arrow-counter-clockwise"/></svg>Version history<span class="meta">Ctrl+S saves one</span></button>
+        <div class="divider"></div>
+        <div class="label">Your other designs in this browser</div>
+        <div id="savedList"></div>
+      </div>
+    </div>
+    <nav id="ws-tabs" class="chip" role="tablist" aria-label="Workspace">
+      <button class="tab on" type="button" role="tab" data-tab="design" aria-selected="true"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-pencil-simple-fill"/></svg>Design</button>
+      <button class="tab" type="button" role="tab" data-tab="sizes" aria-selected="false"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-squares-four"/></svg>All sizes <span class="badge" id="cntSizes"></span></button>
+      <button class="tab" type="button" role="tab" data-tab="export" aria-selected="false"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-printer-3d"/></svg>Export</button>
+    </nav>
+    <span class="spacer"></span>
+    <div id="ws-print">
+      <button class="chip chip-btn" id="printBtn" type="button" aria-haspopup="menu" aria-expanded="false" title="How this faceplate prints: face down or face up">
+        <svg class="ph" width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use id="printIcon" href="icons/phosphor.svg#ph-arrow-line-down"/></svg>
+        <span class="word" id="printLabel">Face down</span>
+        <svg class="ph" width="14" height="14" viewBox="0 0 256 256" aria-hidden="true"><use href="icons/phosphor.svg#ph-caret-down"/></svg>
+      </button>
+      <div class="menu glass" id="printMenu" role="menu" hidden>
+        <div class="label">Prints</div>
+        <button class="item choice" type="button" data-mode-set="down"><svg class="ph" width="20" height="20" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-arrow-line-down"/></svg><span><b>Face down</b><small>The decorated face on the bed, like the Essential and Chevron plates: the cleanest finish. Cuts and grooves only; recesses are bridged.</small></span></button>
+        <button class="item choice" type="button" data-mode-set="up"><svg class="ph" width="20" height="20" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-arrow-line-up"/></svg><span><b>Face up</b><small>The backer on the bed. Raised relief, grips, tabs and sculpted meshes; overhangs and support are checked.</small></span></button>
+      </div>
+    </div>
+    <div id="ws-theme" class="chip" role="group" aria-label="Light or dark">
+      <button type="button" data-mode-theme="light" title="Light" aria-label="Light"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-sun"/></svg></button>
+      <button type="button" data-mode-theme="dark" title="Dark" aria-label="Dark"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-moon"/></svg></button>
+    </div>
+  </header>
+
+  <!-- left library: what is on the face, how the whole design is set up, which sizes -->
+  <aside id="ws-lib" class="glass" aria-label="Library">
+    <div class="tabs">
+      <div class="track" role="tablist" aria-label="Library">
+        <button class="seg on" type="button" role="tab" data-ltab="elements" aria-selected="true">Elements</button>
+        <button class="seg" type="button" role="tab" data-ltab="style" aria-selected="false">Style</button>
+        <button class="seg" type="button" role="tab" data-ltab="sizes" aria-selected="false">Sizes</button>
+      </div>
+    </div>
+
+    <div class="pane" data-lpane="elements">
+      <section>
+        <div class="h2">Add to the face</div>
+        <div class="adds">
+          <button class="key" type="button" data-add="pattern" title="A repeating pattern across the whole plate"><svg class="ph" width="22" height="22" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-dots-nine"/></svg>Pattern</button>
+          <button class="key" type="button" data-add="shape" title="A shape, raised or cut"><svg class="ph" width="22" height="22" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-shapes"/></svg>Shape</button>
+          <!-- a pen nib drawn here in Phosphor's regular weight (the sprite has no pen; tools/make-icons.mjs can add pen-nib) -->
+          <button class="key" type="button" id="addDraw" title="Draw your own shape or line with the pen: click for corners, drag for curves. Raise it with a taper angle for sloping sides."><svg class="ph" width="22" height="22" viewBox="0 0 256 256" aria-hidden="true"><path d="M40 216 L72 112 L148 80 L176 108 L144 184 Z" fill="none" stroke="currentColor" stroke-width="16" stroke-linejoin="round"/><path d="M40 216 L100 156" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round"/><circle cx="114" cy="142" r="16" fill="none" stroke="currentColor" stroke-width="16"/><path d="M148 80 L188 40 L216 68 L176 108" fill="none" stroke="currentColor" stroke-width="16" stroke-linejoin="round"/></svg>Draw</button>
+          <!-- Combine (two overlapping shapes, one cut) and Outline (a shape inside a rounded band), drawn in Phosphor's regular weight -->
+          <button class="key" type="button" data-add="combine" title="Combine elements: join them, cut one with the others, or keep where they overlap. Select an element first to start from it."><svg class="ph" width="22" height="22" viewBox="0 0 256 256" aria-hidden="true"><rect x="32" y="56" width="120" height="120" rx="12" fill="none" stroke="currentColor" stroke-width="16"/><circle cx="168" cy="152" r="56" fill="none" stroke="currentColor" stroke-width="16" stroke-dasharray="20 14"/></svg>Combine</button>
+          <button class="key" type="button" data-add="offset" title="An outline that follows an element at a distance: a border or halo round it, or the shape grown or shrunk. Select the element first."><svg class="ph" width="22" height="22" viewBox="0 0 256 256" aria-hidden="true"><rect x="88" y="96" width="80" height="64" rx="6" fill="none" stroke="currentColor" stroke-width="16"/><rect x="40" y="48" width="176" height="160" rx="48" fill="none" stroke="currentColor" stroke-width="16"/></svg>Outline</button>
+          <button class="key" type="button" data-add="text" title="Letters, raised, cut or inlaid flush in their own colour, in one of seven fonts"><svg class="ph" width="22" height="22" viewBox="0 0 256 256" aria-hidden="true"><use href="icons/phosphor.svg#ph-text-t"/></svg>Text</button>
+          <button class="key" type="button" data-add="surface" title="A 3D texture: hills and hollows over the whole face, a shape, or the selected element (letters, art). Prints face up."><svg class="ph" width="22" height="22" viewBox="0 0 256 256" aria-hidden="true"><use href="icons/phosphor.svg#ph-mountains"/></svg>3D texture</button>
+          <button class="key" type="button" data-add="solid" title="A solid block: box, cylinder, taper, dome, pyramid or wedge, with chamfered or rounded top edges. Stack them to build a handle."><svg class="ph" width="22" height="22" viewBox="0 0 256 256" aria-hidden="true"><use href="icons/phosphor.svg#ph-cube"/></svg>Solid</button>
+          <button class="key" type="button" data-add="grip" title="A built-in grip (prints face up)"><svg class="ph" width="22" height="22" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-hand-grabbing"/></svg>Grip</button>
+          <button class="key" type="button" data-add="grip" data-preset="lip" title="A lip pull flush with the top edge: a finger pocket under its lip, angled ends (prints face up)"><svg class="ph" width="22" height="22" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-align-top"/></svg>Lip pull</button>
+          <label class="key" for="fileSvg" title="Flat art from an SVG file, one layer per fill colour"><svg class="ph" width="22" height="22" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-bezier-curve"/></svg>SVG<input id="fileSvg" type="file" accept=".svg,image/svg+xml"></label>
+          <label class="key" for="fileImage" title="A picture (PNG, JPG or WebP), split into a few tones: raised in steps, cut in steps, or inlaid in colours"><svg class="ph" width="22" height="22" viewBox="0 0 256 256" aria-hidden="true"><use href="icons/phosphor.svg#ph-image"/></svg>Image<input id="fileImage" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp"></label>
+          <label class="key" for="fileMesh" title="A sculpted mesh (STL or OBJ, e.g. from Nomad Sculpt)"><svg class="ph" width="22" height="22" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-cube-transparent"/></svg>Mesh<input id="fileMesh" type="file" accept=".stl,.obj,model/stl,model/obj"></label>
+        </div>
+      </section>
+      <section>
+        <div class="h2row"><span class="h2">Stack · top prints last</span><span class="badge" id="elCount">0</span></div>
+        <ul class="stack" id="elList" aria-label="Elements"></ul>
+        <div class="stack-actions">
+          <button class="key" type="button" id="btnElUp" title="Move up: later in the stack wins"><svg class="ph" width="16" height="16" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-arrow-up"/></svg>Up</button>
+          <button class="key" type="button" id="btnElDown" title="Move down"><svg class="ph" width="16" height="16" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-arrow-down"/></svg>Down</button>
+          <button class="key" type="button" id="btnElDup" title="Duplicate"><svg class="ph" width="16" height="16" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-copy"/></svg>Copy</button>
+          <button class="key danger" type="button" id="btnElDel" title="Remove (Delete)"><svg class="ph" width="16" height="16" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-trash"/></svg>Remove</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="pane" data-lpane="style" id="stylePane" hidden></div>
+
+    <div class="pane" data-lpane="sizes" hidden>
+      <section>
+        <div class="h2row"><span class="h2">Size · drawn to scale</span><span class="badge" id="sizeCount"></span></div>
+        <div class="sizes" id="sizeGrid"></div>
+        <p class="readout" id="sizeReadout"></p>
+        <p class="hint">Every size wears the same design. Tick a size's corner to include it in <b>Download all</b>; the dot shows its print check.</p>
+        <div class="sizes-actions">
+          <button class="key" type="button" id="btnSizesAll">All sizes</button>
+          <button class="key" type="button" id="btnSizesOne">Only this</button>
+          <button class="key" type="button" id="btnCheckAll">Check all</button>
+        </div>
+      </section>
+    </div>
+  </aside>
+
+  <!-- right inspector: the selected element only; hidden when nothing is selected -->
+  <aside id="ws-insp" class="glass glass-edge" aria-label="This element" hidden></aside>
+
+  <!-- the view tools over the stage -->
+  <div id="ws-tools">
+    <div class="view chip" role="group" aria-label="View">
+      <button type="button" data-stage="3d">3D</button>
+      <button type="button" data-stage="2d" class="on">2D</button>
+    </div>
+    <div class="group chip" role="group" aria-label="Show">
+      <button class="icon-btn" type="button" id="tglWall" aria-pressed="false" title="Wall: the neighbouring plates, to see the pattern run on"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-squares-four"/></svg></button>
+      <button class="icon-btn" type="button" id="tglGrid" aria-pressed="true" title="Millimetre grid"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-grid-four"/></svg></button>
+      <button class="icon-btn measure" type="button" id="tglDims" aria-pressed="true" title="Dimensions"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-ruler"/></svg></button>
+      <button class="icon-btn" type="button" id="tglIssues" aria-pressed="true" title="Show where the print checks point"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-warning"/></svg></button>
+      <button class="icon-btn" type="button" id="tglSym" aria-pressed="false" title="Mirror left to right: every placed element gets a twin across the centre line"><svg class="ph" width="18" height="18" viewBox="0 0 256 256" aria-hidden="true"><use href="icons/phosphor.svg#ph-flip-horizontal"/></svg></button>
+      <button class="icon-btn" type="button" id="btnFit" title="Fit the plate in view (F)"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-corners-out"/></svg></button>
+    </div>
+    <div class="group chip" role="group" aria-label="History">
+      <button class="icon-btn" type="button" id="btnUndo" title="Undo (Ctrl+Z)" aria-label="Undo"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-arrow-counter-clockwise"/></svg></button>
+      <button class="icon-btn" type="button" id="btnRedo" title="Redo (Ctrl+Y)" aria-label="Redo"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-arrow-clockwise"/></svg></button>
+    </div>
+  </div>
+
+  <!-- All sizes -->
+  <section class="wpanel glass" id="ws-sizes" data-view="sizes" hidden aria-label="All sizes">
+    <div class="whead">
+      <div><h2>All 18 sizes</h2><p>The same design on every faceplate. Tick the sizes to export; click one to open it.</p></div>
+      <div class="acts"><button class="key sm" type="button" id="btnSizesRefresh">Check all again</button></div>
+    </div>
+    <div class="wbody"><div class="cards" id="sizeCards"></div></div>
+  </section>
+
+  <!-- Export -->
+  <section class="wpanel glass" id="ws-export" data-view="export" hidden aria-label="Export">
+    <div class="whead">
+      <div><h2>Export</h2><p>Ready-to-slice files, one per size. Colours become extruders in the Style tab's order.</p></div>
+      <div class="acts"><span class="mono" id="exNote" style="font-size:12px;color:var(--ink-2)"></span></div>
+    </div>
+    <div class="wbody">
+      <div class="exgrid">
+        <div class="exopts">
+          <section><div class="h2">Format</div>
+            <select class="field" id="exFormat">
+              <option value="prusa">3MF for PrusaSlicer (multi-part, profile inside)</option>
+              <option value="bambu">3MF for Bambu Studio / OrcaSlicer (multi-part)</option>
+              <option value="stl">STL (one body, one colour)</option>
+            </select></section>
+          <section><div class="h2">Printer bed</div><select class="field" id="exBed"></select><p class="note" id="exBedNote"></p></section>
+          <section><div class="h2">Print orientation</div>
+            <select class="field" id="exOrient"><option value="auto">Match the design (top bar)</option><option value="down">Face down: decorated face on the bed</option><option value="up">Face up: backer on the bed</option></select></section>
+          <section><div class="h2">Split into parts</div>
+            <select class="field" id="exSplit"><option value="color">By colour: one part per colour</option><option value="element">By element</option><option value="piece">By piece: every strip or tile its own part, like the Chevron files</option></select></section>
+          <section><div class="h2">Colour to extruder</div><div class="extmap" id="exMap"></div></section>
+        </div>
+        <div>
+          <div class="h2row"><span class="h2">Sizes to export</span><span class="mono" style="font-size:11px;color:var(--ink-3)">Download all is the dock's button</span></div>
+          <ul class="exrows" id="exRows"></ul>
+          <section class="exsteps"><div class="h2">In the slicer</div><ol class="steps" id="exSteps"></ol></section>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div id="ws-hint" aria-live="polite"></div>
+
+  <!-- a new faceplate: how it prints decides what can go on it, so that is the first choice (or the sample) -->
+  <div id="ws-start" class="glass" hidden role="dialog" aria-modal="true" aria-labelledby="stTitle">
+    <div class="ihead"><h3 id="stTitle">New faceplate</h3><span class="spacer"></span><button class="x" type="button" id="stClose" aria-label="Close"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-x"/></svg></button></div>
+    <div class="stbody">
+      <p class="hint">Start with how it prints: it decides what you can add. The print chip in the top bar switches it later.</p>
+      <div class="stchoices">
+        <button class="key stc" type="button" data-start="down"><svg class="ph" width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="icons/phosphor.svg#ph-arrow-line-down"/></svg><span><b>Blank, face down</b><small>The decorated face prints on the bed: cuts, grooves and inlays in other colours. The cleanest finish, like the Essential and Chevron plates.</small></span></button>
+        <button class="key stc" type="button" data-start="up"><svg class="ph" width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="icons/phosphor.svg#ph-arrow-line-up"/></svg><span><b>Blank, face up</b><small>The backer prints on the bed: grips, raised relief, blocks, 3D textures and sculpted meshes.</small></span></button>
+        <button class="key stc" type="button" data-start="sample"><svg class="ph" width="24" height="24" viewBox="0 0 256 256" aria-hidden="true"><use href="icons/phosphor.svg#ph-dots-nine"/></svg><span><b>The chevron sample</b><small>A face-down plate with chevron grooves, to try the tool and change from there.</small></span></button>
+      </div>
+      <div class="stfoot"><label class="key sm" for="fileDesign"><svg class="ph" width="15" height="15" viewBox="0 0 256 256" aria-hidden="true"><use href="icons/phosphor.svg#ph-upload-simple"/></svg>Open a design file</label><span class="note" id="stNote"></span></div>
+    </div>
+  </div>
+
+  <!-- every kept version of a design (js/ui/historyview.js fills it) -->
+  <div id="ws-history" class="glass" hidden role="dialog" aria-modal="true" aria-labelledby="hiTitle"></div>
+
+  <!-- the first download from the dock: how the files are made, said once (Export changes it any time) -->
+  <div id="ws-confirm" class="glass" hidden role="dialog" aria-modal="true" aria-labelledby="cfTitle">
+    <div class="ihead"><h3 id="cfTitle">Before you download</h3><span class="spacer"></span><button class="x" type="button" id="cfClose" aria-label="Cancel"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-x"/></svg></button></div>
+    <div class="cfbody">
+      <p class="hint">How the files are made. You can change any of it later in Export.</p>
+      <label class="cfrow"><span class="h2">Slicer</span>
+        <select class="field" id="cfFormat">
+          <option value="prusa">PrusaSlicer 3MF (multi-part, profile inside)</option>
+          <option value="bambu">Bambu Studio / OrcaSlicer 3MF (multi-part)</option>
+          <option value="stl">STL (one body, one colour)</option>
+        </select></label>
+      <label class="cfrow"><span class="h2">Printer</span><select class="field" id="cfBed"></select></label>
+      <p class="note" id="cfBedNote"></p>
+      <div class="cfrow"><span class="h2">Prints</span><span id="cfOrient"></span></div>
+      <div class="cfrow top"><span class="h2">Colours</span><div class="extmap" id="cfMap"></div></div>
+      <div class="cfrow"><span class="h2">Files</span><span id="cfWhat"></span></div>
+      <details class="cfsteps"><summary>Then, in the slicer</summary><ol class="steps" id="cfSteps"></ol></details>
+      <label class="cfask"><input type="checkbox" id="cfAgain" checked>Don't ask again in this browser</label>
+    </div>
+    <div class="cffoot"><button class="key sm" type="button" id="cfCancel">Cancel</button><button class="cta sm" type="button" id="cfGo">Download<svg class="ph" width="16" height="16" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-arrow-right"/></svg></button></div>
+  </div>
+
+  <!-- print checks: the dock's status opens this -->
+  <div id="ws-issues" class="glass" hidden role="dialog" aria-label="Print checks">
+    <div class="ihead"><h3>Print checks</h3><span class="mono" id="issuesSub"></span><span class="spacer"></span><button class="x" type="button" id="btnIssuesClose" aria-label="Close"><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-x"/></svg></button></div>
+    <div class="ibody" id="checkList"></div>
+    <p class="ifoot">The checks look at the shapes on the plate: widths, gaps, overhangs, bridges, screw holes, the handle seat, grip strength and hidden parts. They cannot see your slicer settings or filament, so look at the sliced layers before you print.</p>
+  </div>
+
+  <!-- the dock: status, the size and its dimensions, the primary action -->
+  <div id="ws-dock" class="glass">
+    <button class="status loading" type="button" id="dockStatus" aria-expanded="false" aria-controls="ws-issues"><span class="dot"></span><span id="stLabel">Checking</span><svg class="ph caret" width="14" height="14" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-caret-up"/></svg></button>
+    <div class="group"><span class="big" id="dockSize">2W-1H</span></div>
+    <div class="group"><span class="big" id="dockDims">175 × 55</span><span class="unit-lbl">mm</span></div>
+    <button class="cta" type="button" id="btnDownload"><span id="ctaLabel">Download</span><svg class="ph" width="18" height="18" viewBox="0 0 256 256"><use href="icons/phosphor.svg#ph-arrow-right"/></svg></button>
+  </div>
+
+  <div id="toast" class="glass" hidden role="status"></div>
+</div>
+
+<script src="vendor/polygon-clipping/polygon-clipping.umd.js"></script>
+<script src="vendor/jszip/jszip.min.js"></script>
+<script type="importmap">{"imports":{"three":"./vendor/three/three.module.js"}}</script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
